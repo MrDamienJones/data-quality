@@ -25,6 +25,7 @@ from .constants import (
     MetadataField,
 )
 from .field_maps import SourceMap, itunes_txt, mp3tag_csv
+from .frame import FrameValidationSummary, validate_frame
 from .models import (
     AudioFormatEnum,
     AudioMetadata,
@@ -46,6 +47,9 @@ __all__ = [
     "list_checks",
     "Check",
     "CHECK_REGISTRY",
+    # pandas adapter (optional; pandas imported lazily at call time)
+    "validate_frame",
+    "FrameValidationSummary",
     # field maps
     "SourceMap",
     "mp3tag_csv",
