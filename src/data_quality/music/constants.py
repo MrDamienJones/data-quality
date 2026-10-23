@@ -187,6 +187,17 @@ CHARACTER_REPLACEMENTS = {
     "Ñ": "N",
     "ç": "c",
     "Ç": "C",
+    # Unicode dash/hyphen lookalikes -> ASCII hyphen. Mapped before the
+    # internal "-" strip in generate_filename, so they are treated exactly
+    # like a normal hyphen (U+002D) rather than drifting the filename.
+    "\u00ad": "-",  # SOFT HYPHEN
+    "\u2010": "-",  # HYPHEN
+    "\u2011": "-",  # NON-BREAKING HYPHEN
+    "\u2012": "-",  # FIGURE DASH
+    "\u2013": "-",  # EN DASH
+    "\u2014": "-",  # EM DASH
+    "\u2015": "-",  # HORIZONTAL BAR
+    "\u2212": "-",  # MINUS SIGN
     "&": "And",
     "!": "",
     '"': "",

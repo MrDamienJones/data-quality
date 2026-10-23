@@ -77,7 +77,7 @@ MIN_FILE_SIZE_BYTES  # 100_000
 CAMELOT_NOTATIONS  # valid album values
 INITIALKEY_NOTATIONS  # valid initialkey values
 CAMELOT_KEYS  # album -> expected initialkey
-CHARACTER_REPLACEMENTS  # filename sanitisation table
+CHARACTER_REPLACEMENTS  # filename sanitisation (incl. Unicode-dash normalisation)
 ```
 
 ## Pydantic model

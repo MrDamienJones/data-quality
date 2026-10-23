@@ -197,6 +197,32 @@ class TestGenerateFilename:
         # so the ">2 dashes" guard is defensive and not exercised here).
         assert generate_filename("A (b) (c)", "T (d) (e)") == "Abc-Td-e"
 
+    def test_unicode_hyphen_normalized_like_ascii(self):
+        # U+2010 (HYPHEN), seen in the real iTunes export, must behave exactly
+        # like a normal ASCII hyphen: stripped from within a field.
+        assert generate_filename("Above And Beyond", "Tri\u2010State") == (
+            generate_filename("Above And Beyond", "Tri-State")
+        )
+        assert generate_filename("Above And Beyond", "Tri\u2010State") == (
+            "AboveAndBeyond-TriState"
+        )
+
+    @pytest.mark.parametrize(
+        "dash",
+        [
+            "\u00ad",
+            "\u2010",
+            "\u2011",
+            "\u2012",
+            "\u2013",
+            "\u2014",
+            "\u2015",
+            "\u2212",
+        ],
+    )
+    def test_all_dash_lookalikes_normalized(self, dash):
+        assert generate_filename("Artist", f"Tri{dash}State") == "Artist-TriState"
+
 
 class TestAudioMetadataModel:
     def test_valid_model_constructs(self):
