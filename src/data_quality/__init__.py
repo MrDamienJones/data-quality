@@ -2,7 +2,7 @@
 
 Domains live in subpackages:
 
-- ``data_quality.music``  — audio metadata checks
+- ``data_quality.music_edm`` — EDM audio metadata checks
 - ``data_quality.garmin`` — placeholder for Garmin-file checks
 - ``data_quality.pdf``    — placeholder for PDF checks
 

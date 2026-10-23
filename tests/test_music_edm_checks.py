@@ -6,7 +6,7 @@ check fires with the expected issue code.
 
 import pytest
 
-from data_quality.music import (
+from data_quality.music_edm import (
     AudioMetadata,
     generate_filename,
     validate_metadata,

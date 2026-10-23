@@ -1,11 +1,12 @@
-# data_quality.music
+# data_quality.music_edm
 
-Audio metadata data quality checks, ported from the music file pipeline and
+Audio metadata data quality checks for the EDM library, ported from the music
+file pipeline and
 decoupled from file I/O. The caller reads the file and passes an extracted dict
 of fields; this package validates it.
 
 ```python
-from data_quality.music import validate_metadata, AudioMetadata, BPM_MIN, BPM_MAX
+from data_quality.music_edm import validate_metadata, AudioMetadata, BPM_MIN, BPM_MAX
 ```
 
 ## Files
@@ -92,7 +93,7 @@ when you want a non-raising report of every issue at once.
 Keep the mutagen reading in the consumer; hand the extracted dict over:
 
 ```python
-from data_quality.music import validate_metadata
+from data_quality.music_edm import validate_metadata
 
 fields = extract_fields_with_mutagen(path)  # your existing code
 result = validate_metadata(

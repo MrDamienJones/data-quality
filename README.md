@@ -10,7 +10,7 @@ constants. Consumers can import the validation logic itself.
 
 | Domain | Package | Status | Docs |
 |--------|---------|--------|------|
-| Music  | `data_quality.music`  | Implemented | [music/README.md](src/data_quality/music/README.md) |
+| Music (EDM) | `data_quality.music_edm` | Implemented | [music_edm/README.md](src/data_quality/music_edm/README.md) |
 | Garmin | `data_quality.garmin` | Placeholder | [garmin/README.md](src/data_quality/garmin/README.md) |
 | PDF    | `data_quality.pdf`    | Placeholder | [pdf/README.md](src/data_quality/pdf/README.md) |
 
@@ -26,7 +26,7 @@ data-quality/
   .pre-commit-config.yaml
   src/data_quality/
     core/        # ValidationIssue, ValidationResult (no domain knowledge, no I/O)
-    music/       # audio metadata: constants.py, models.py, checks.py
+    music_edm/   # EDM audio metadata: constants.py, models.py, checks.py
     garmin/      # placeholder
     pdf/         # placeholder
   tests/
@@ -74,7 +74,7 @@ dependencies = [
 ## Quick start
 
 ```python
-from data_quality.music import validate_metadata
+from data_quality.music_edm import validate_metadata
 
 fields = {
     "bpm": 128, "track_number": 128, "title": "Track (Mix)",
@@ -92,7 +92,7 @@ if not result.passed:
         print(issue.code, issue.field, str(issue))
 ```
 
-See the [music docs](src/data_quality/music/README.md) for the full field list,
+See the [music_edm docs](src/data_quality/music_edm/README.md) for the full field list,
 every check, and the Pydantic model.
 
 ## Development

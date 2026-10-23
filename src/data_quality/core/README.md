@@ -43,5 +43,5 @@ double-counting.
 ## Writing a new domain
 
 A domain's `validate_*` function builds a `ValidationResult`, calls `add_issue`
-for each problem it finds, and returns it. See `data_quality.music.checks` for a
+for each problem it finds, and returns it. See `data_quality.music_edm.checks` for a
 worked example.

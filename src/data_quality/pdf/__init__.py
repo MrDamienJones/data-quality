@@ -1,6 +1,6 @@
 """PDF data quality checks (placeholder).
 
-No checks are implemented yet. When you add them, follow the ``music``
+No checks are implemented yet. When you add them, follow the ``music_edm``
 subpackage layout:
 
 - ``constants.py`` — ranges, enums, lookup tables (single source of truth)

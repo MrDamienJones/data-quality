@@ -2,7 +2,7 @@
 
 Garmin-file data quality checks. **Placeholder — no checks implemented yet.**
 
-When you add them, mirror the `music` subpackage so consumers get a consistent
+When you add them, mirror the `music_edm` subpackage so consumers get a consistent
 API across domains:
 
 - `constants.py` — ranges, enums, lookup tables (single source of truth)
