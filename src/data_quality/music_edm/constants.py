@@ -49,6 +49,14 @@ BPM_MAX = 200
 YEAR_MIN = 1970
 MIN_FILE_SIZE_BYTES = 100_000
 
+# Canonical fields (plus the file_size_bytes runner parameter) whose source
+# cells should be coerced to ``int | None`` rather than ``str | None`` by the
+# pandas adapter. ``file_size_bytes`` is NOT a canonical field — it is a runner
+# parameter fed via ``SourceMap.size_from`` — but it is int-coerced the same way.
+INT_FIELDS: frozenset[str] = frozenset(
+    {"year", "track_number", "bpm", "discogs_id", "file_size_bytes"}
+)
+
 # Music key constants
 CAMELOT_NOTATIONS = {
     "01A-Abm",

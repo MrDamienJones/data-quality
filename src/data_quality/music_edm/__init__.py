@@ -24,6 +24,7 @@ from .constants import (
     AudioFormat,
     MetadataField,
 )
+from .field_maps import SourceMap, itunes_txt, mp3tag_csv
 from .models import (
     AudioFormatEnum,
     AudioMetadata,
@@ -33,12 +34,22 @@ from .models import (
     ValidationConfig,
     generate_filename,
 )
+from .registry import CHECK_REGISTRY, Check, list_checks, validate_row
 
 __all__ = [
     # checks
     "validate_metadata",
     "categorize_issue",
     "EXPECTED_FIELDS",
+    # registry / row runner
+    "validate_row",
+    "list_checks",
+    "Check",
+    "CHECK_REGISTRY",
+    # field maps
+    "SourceMap",
+    "mp3tag_csv",
+    "itunes_txt",
     # results (re-exported for convenience)
     "ValidationIssue",
     "ValidationResult",

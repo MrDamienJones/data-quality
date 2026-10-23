@@ -41,6 +41,7 @@ class ValidationResult:
         self.passed: bool = True
         self.issues: list[ValidationIssue] = []
         self.fields: dict[str, Any] = {}
+        self.skipped: list[str] = []
 
     def add_issue(
         self,
