@@ -8,7 +8,6 @@ names to canonical fields per audio format.
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -23,7 +22,7 @@ from .constants import (
 )
 
 
-class AudioFormatEnum(str, Enum):
+class AudioFormatEnum(str, Enum):  # noqa: UP042 (keep str+Enum to match source behavior)
     """Supported audio formats."""
 
     MP3 = "mp3"
@@ -65,10 +64,10 @@ def generate_filename(artist: str, title: str) -> str:
 class AudioMetadata(BaseModel):
     """Validated audio metadata."""
 
-    bpm: Optional[int] = Field(default=None, ge=BPM_MIN, le=BPM_MAX)
-    track_number: Optional[int] = Field(default=None, ge=BPM_MIN, le=BPM_MAX)
-    publisher: Optional[str] = None
-    grouping: Optional[str] = None
+    bpm: int | None = Field(default=None, ge=BPM_MIN, le=BPM_MAX)
+    track_number: int | None = Field(default=None, ge=BPM_MIN, le=BPM_MAX)
+    publisher: str | None = None
+    grouping: str | None = None
     discogs_id: int = Field(ge=0)
     year: int = Field(ge=YEAR_MIN, le=datetime.now().year)
     title: str = Field(min_length=1)
@@ -115,7 +114,7 @@ class AudioMetadata(BaseModel):
             expected_key = CAMELOT_KEYS.get(info.data["album"])
             if expected_key and v != expected_key:
                 raise ValueError(
-                    f'Initial key must be {expected_key} for album {info.data["album"]}'
+                    f"Initial key must be {expected_key} for album {info.data['album']}"
                 )
         return v
 
@@ -124,8 +123,7 @@ class AudioMetadata(BaseModel):
     def validate_subtitle_format(cls, v: str, info) -> str:
         """Validate subtitle matches 'Artist - Title Album BPM Year' format."""
         if not all(
-            field in info.data
-            for field in ["artist", "title", "album", "bpm", "year"]
+            field in info.data for field in ["artist", "title", "album", "bpm", "year"]
         ):
             return v  # Skip validation if required fields missing
 
@@ -159,7 +157,7 @@ class AudioMetadata(BaseModel):
         if "artist" in info.data and info.data["artist"]:
             if v != info.data["artist"]:
                 raise ValueError(
-                    f'Album artist fields must match artist: {info.data["artist"]}'
+                    f"Album artist fields must match artist: {info.data['artist']}"
                 )
         return v
 
@@ -172,20 +170,20 @@ class MetadataMapping(BaseModel):
 
     bpm: str
     key: str
-    discogs_id: Optional[str] = None
-    title: Optional[str] = None
-    artist: Optional[str] = None
-    album_artist: Optional[str] = None
-    album_artist_sort: Optional[str] = None
-    subtitle: Optional[str] = None
-    publisher: Optional[str] = None
-    grouping: Optional[str] = None
-    track_number: Optional[str] = None
-    encoded_by: Optional[str] = None
-    year: Optional[str] = None
-    album: Optional[str] = None
-    initialkey: Optional[str] = None
-    encodedby: Optional[str] = None
+    discogs_id: str | None = None
+    title: str | None = None
+    artist: str | None = None
+    album_artist: str | None = None
+    album_artist_sort: str | None = None
+    subtitle: str | None = None
+    publisher: str | None = None
+    grouping: str | None = None
+    track_number: str | None = None
+    encoded_by: str | None = None
+    year: str | None = None
+    album: str | None = None
+    initialkey: str | None = None
+    encodedby: str | None = None
 
 
 class PathConfig(BaseModel):
@@ -193,14 +191,14 @@ class PathConfig(BaseModel):
 
     stage1_input: Path
     stage2_input: Path
-    stage3_input: Optional[Path] = None
-    stage4_input: Optional[Path] = None
+    stage3_input: Path | None = None
+    stage4_input: Path | None = None
 
 
 class ValidationConfig(BaseModel):
     """Validation rules."""
 
-    bpm_range: List[int] = Field(default=[BPM_MIN, BPM_MAX], min_length=2, max_length=2)
+    bpm_range: list[int] = Field(default=[BPM_MIN, BPM_MAX], min_length=2, max_length=2)
 
     @field_validator("bpm_range")
     @classmethod
@@ -215,9 +213,9 @@ class Config(BaseModel):
     """Main configuration model."""
 
     paths: PathConfig
-    supported_extensions: List[str] = Field(min_length=1)
-    metadata_fields: Dict[AudioFormatEnum, MetadataMapping]
-    validation: Optional[ValidationConfig] = ValidationConfig()
+    supported_extensions: list[str] = Field(min_length=1)
+    metadata_fields: dict[AudioFormatEnum, MetadataMapping]
+    validation: ValidationConfig | None = ValidationConfig()
 
     @field_validator("supported_extensions")
     @classmethod

@@ -17,7 +17,8 @@ dependencies = [
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
-    "black>=22.0.0",
+    "ruff>=0.5.0",
+    "pre-commit>=3.5.0",
 ]
 
 [tool.setuptools.packages.find]
@@ -26,5 +27,10 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
-[tool.black]
+[tool.ruff]
 line-length = 88
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# pycodestyle errors/warnings, pyflakes, isort, pyupgrade, flake8-bugbear
+select = ["E", "W", "F", "I", "UP", "B"]

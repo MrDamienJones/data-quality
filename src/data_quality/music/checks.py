@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 from pydantic import ValidationError
 
@@ -53,7 +53,7 @@ EXPECTED_FIELDS = (
 )
 
 
-def categorize_issue(issue: str) -> Tuple[str, str]:
+def categorize_issue(issue: str) -> tuple[str, str]:
     """Return ``(code, field)`` for an issue.
 
     Structured :class:`ValidationIssue` values carry their own code. Plain
@@ -100,9 +100,9 @@ def categorize_issue(issue: str) -> Tuple[str, str]:
 
 
 def validate_metadata(
-    fields: Dict[str, Any],
+    fields: dict[str, Any],
     filename_stem: str,
-    file_size_bytes: Optional[int] = None,
+    file_size_bytes: int | None = None,
 ) -> ValidationResult:
     """Run all music metadata checks on an extracted dict of fields.
 
@@ -208,7 +208,8 @@ def validate_metadata(
         expected_key = CAMELOT_KEYS.get(album)
         if expected_key and key != expected_key:
             result.add_issue(
-                f"Key '{key}' doesn't match album '{album}' (expected '{expected_key}')",
+                f"Key '{key}' doesn't match album '{album}' "
+                f"(expected '{expected_key}')",
                 "key_album_mismatch",
                 "initialkey",
             )
@@ -283,9 +284,7 @@ def validate_metadata(
 
     # 14. Discogs ID present
     if discogs is None or discogs == 0:
-        result.add_issue(
-            "Discogs ID missing or zero", "discogs_missing", "discogs_id"
-        )
+        result.add_issue("Discogs ID missing or zero", "discogs_missing", "discogs_id")
 
     # 15. File size sanity
     if file_size_bytes is None:

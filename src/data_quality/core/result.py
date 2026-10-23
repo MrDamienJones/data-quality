@@ -8,7 +8,7 @@ validated item (a file, a record, a document).
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Set
+from typing import Any
 
 
 class ValidationIssue(str):
@@ -21,7 +21,7 @@ class ValidationIssue(str):
     code: str
     field: str
 
-    def __new__(cls, message: str, code: str, field: str) -> "ValidationIssue":
+    def __new__(cls, message: str, code: str, field: str) -> ValidationIssue:
         issue = super().__new__(cls, message)
         issue.code = code
         issue.field = field
@@ -39,8 +39,8 @@ class ValidationResult:
 
     def __init__(self) -> None:
         self.passed: bool = True
-        self.issues: List[ValidationIssue] = []
-        self.fields: Dict[str, Any] = {}
+        self.issues: list[ValidationIssue] = []
+        self.fields: dict[str, Any] = {}
 
     def add_issue(
         self,
@@ -52,13 +52,13 @@ class ValidationResult:
         self.passed = False
         self.issues.append(ValidationIssue(message, code, field))
 
-    def flagged_fields(self) -> Set[str]:
+    def flagged_fields(self) -> set[str]:
         """Field names already reported by an explicit check.
 
         A single issue may name several comma-separated fields; each is
         returned individually so callers can avoid double-counting.
         """
-        flagged: Set[str] = set()
+        flagged: set[str] = set()
         for issue in self.issues:
             flagged.update(name.strip() for name in issue.field.split(","))
         return flagged
