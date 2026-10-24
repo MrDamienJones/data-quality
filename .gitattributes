@@ -1,0 +1,3 @@
+# Store and check out text files with LF endings on every OS, so a Windows
+# checkout (core.autocrlf=true) agrees with the mixed-line-ending hook.
+* text=auto eol=lf
