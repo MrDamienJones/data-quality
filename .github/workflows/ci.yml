@@ -55,10 +55,17 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Verify the release asset against the release's published SHA256
+      # checksums before extracting it.
       - name: Install gitleaks
+        working-directory: /tmp
         run: |
-          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
-            | tar -xz -C /usr/local/bin gitleaks
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+          asset="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfLO "${base}/${asset}"
+          curl -sSfLO "${base}/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          grep " ${asset}\$" "gitleaks_${GITLEAKS_VERSION}_checksums.txt" | sha256sum --check --strict
+          tar -xzf "${asset}" -C /usr/local/bin gitleaks
 
       - name: Scan every commit
         run: gitleaks git . --redact --no-banner --log-opts="--all"

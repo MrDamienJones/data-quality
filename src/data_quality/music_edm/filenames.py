@@ -26,8 +26,7 @@ def generate_filename(artist: str, title: str) -> str:
     # Handle brackets: replace last ( with -, remove all other ( and )
     if "(" in filename:
         last_paren = filename.rfind("(")
-        if last_paren != -1:
-            filename = filename[:last_paren] + "-" + filename[last_paren + 1 :]
+        filename = filename[:last_paren] + "-" + filename[last_paren + 1 :]
         filename = filename.replace("(", "").replace(")", "")
 
     filename = filename.replace(" ", "")
