@@ -35,12 +35,15 @@ class ValidationResult:
         passed: ``True`` until the first issue is added.
         issues: the list of :class:`ValidationIssue` recorded.
         fields: the extracted field values that were validated (optional).
+        ran: ids of the checks that ran, in run order.
+        skipped: ids of the checks that could not run for lack of input.
     """
 
     def __init__(self) -> None:
         self.passed: bool = True
         self.issues: list[ValidationIssue] = []
         self.fields: dict[str, Any] = {}
+        self.ran: list[str] = []
         self.skipped: list[str] = []
 
     def add_issue(

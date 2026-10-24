@@ -26,6 +26,8 @@ class TestValidationResult:
         result = ValidationResult()
         assert result.passed is True
         assert result.issues == []
+        assert result.ran == []
+        assert result.skipped == []
         assert bool(result) is True
 
     def test_add_issue_marks_failed(self):

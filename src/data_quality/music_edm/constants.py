@@ -47,15 +47,10 @@ class MetadataField(Enum):
 BPM_MIN = 100
 BPM_MAX = 200
 YEAR_MIN = 1970
-MIN_FILE_SIZE_BYTES = 100_000
 
-# Canonical fields (plus the file_size_bytes runner parameter) whose source
-# cells should be coerced to ``int | None`` rather than ``str | None`` by the
-# pandas adapter. ``file_size_bytes`` is NOT a canonical field — it is a runner
-# parameter fed via ``SourceMap.size_from`` — but it is int-coerced the same way.
-INT_FIELDS: frozenset[str] = frozenset(
-    {"year", "track_number", "bpm", "discogs_id", "file_size_bytes"}
-)
+# Canonical fields whose values validate_row parses to ``int | None`` rather
+# than ``str | None``.
+INT_FIELDS: frozenset[str] = frozenset({"year", "track_number", "bpm", "discogs_id"})
 
 # Music key constants
 CAMELOT_NOTATIONS = {
@@ -206,6 +201,15 @@ CHARACTER_REPLACEMENTS = {
     "\u2014": "-",  # EM DASH
     "\u2015": "-",  # HORIZONTAL BAR
     "\u2212": "-",  # MINUS SIGN
+    "\ufe58": "-",  # SMALL EM DASH
+    "\ufe63": "-",  # SMALL HYPHEN-MINUS
+    "\uff0d": "-",  # FULLWIDTH HYPHEN-MINUS
+    # Typographic quote/apostrophe lookalikes, removed like their ASCII forms.
+    "\u2018": "",  # LEFT SINGLE QUOTATION MARK
+    "\u2019": "",  # RIGHT SINGLE QUOTATION MARK
+    "\u00b4": "",  # ACUTE ACCENT (used as an apostrophe)
+    "\u201c": "",  # LEFT DOUBLE QUOTATION MARK
+    "\u201d": "",  # RIGHT DOUBLE QUOTATION MARK
     "&": "And",
     "!": "",
     '"': "",
@@ -246,12 +250,17 @@ CHECK_TYPES = {
     "invalid_key": "value_validity",
     "corrupted_field": "value_validity",
     "title_format": "value_validity",
-    "file_size": "value_validity",
     "bpm_track_mismatch": "cross_field",
     "key_album_mismatch": "cross_field",
     "subtitle_drift": "cross_field",
     "filename_drift": "cross_field",
+    "filename_case_drift": "cross_field",
     "artist_field_mismatch": "cross_field",
     "publisher_grouping": "cross_field",
     "pydantic_error": "pydantic",
+    # reconcile_frames (cross-source) codes
+    "unmatched": "join",
+    "duplicate_key": "join",
+    "missing_key": "join",
+    "cross_source_mismatch": "cross_source",
 }

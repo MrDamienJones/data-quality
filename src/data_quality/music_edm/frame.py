@@ -17,8 +17,7 @@ pandas is an **optional** dependency. It is imported LAZILY, inside
 
 from __future__ import annotations
 
-import math
-import os
+import ntpath
 from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
@@ -44,7 +43,11 @@ class FrameValidationSummary:
         results: per-row results, aligned to ``row_index``.
         row_index: original DataFrame index values, aligned to ``results``.
         issue_counts: ``ValidationIssue.code`` -> count across all rows.
-        skipped_checks: union of every row's auto-skipped check ids.
+        checks_run: union of every row's ran check ids.
+        skipped_checks: selected checks that could not run because the source
+            lacks their input: every row's auto-skipped ids, plus
+            ``filename_drift`` when the adapter excluded it for want of a
+            filename column.
     """
 
     total: int = 0
@@ -52,12 +55,18 @@ class FrameValidationSummary:
     results: list[ValidationResult] = field(default_factory=list)
     row_index: list[Any] = field(default_factory=list)
     issue_counts: Counter[str] = field(default_factory=Counter)
+    checks_run: set[str] = field(default_factory=set)
     skipped_checks: set[str] = field(default_factory=set)
 
     @property
     def pass_rate(self) -> float:
         """Fraction of rows that passed, ``0.0`` when no rows were processed."""
         return self.passed / self.total if self.total else 0.0
+
+    @property
+    def checks_selected(self) -> set[str]:
+        """Checks the caller selected: those that ran plus those skipped."""
+        return self.checks_run | self.skipped_checks
 
     def failures(self) -> Iterator[tuple[Any, ValidationResult]]:
         """Yield ``(original_index, result)`` for each failing row."""
@@ -66,47 +75,14 @@ class FrameValidationSummary:
                 yield index, result
 
 
-def _coerce_int(value: Any) -> int | None:
-    """Coerce a DataFrame cell to ``int | None`` (design §5).
+def _is_missing(value: Any) -> bool:
+    """``True`` for ``None``/``NaN``/``pd.NA``/``NaT`` (the single missing gate).
 
-    Handles Python/numpy ints and floats, pandas/numpy missing scalars
-    (``None``/``NaN``/``pd.NA``/``NaT`` via the single ``pd.isna`` gate), and
-    string cells. An unparseable or fractional value coerces to ``None`` rather
-    than raising, so one dirty cell never aborts the whole frame. Called only
-    from inside ``validate_frame`` (after pandas is imported).
+    Called only from inside ``validate_frame`` (after pandas is imported).
     """
     import pandas as pd
 
-    # 1. Fast-path only — NOT the sole missing gate (see step 2).
-    if value is None:
-        return None
-    # 2. The single missing-value test (covers NaN, pd.NA, NaT).
-    if pd.isna(value):
-        return None
-    # 3. A bool is never a valid int field.
-    if isinstance(value, bool):
-        return None
-    # 4. Integers (incl. non-bool numpy integers).
-    if isinstance(value, int):
-        return int(value)
-    # 5. Floats: use only when integral and finite.
-    if isinstance(value, float):
-        if not math.isfinite(value):
-            return None
-        if value == int(value):
-            return int(value)
-        return None
-    # 6. Strings: strip then parse.
-    if isinstance(value, str):
-        stripped = value.strip()
-        if not stripped:
-            return None
-        try:
-            return int(stripped)
-        except (ValueError, TypeError):
-            return None
-    # 7. Anything else.
-    return None
+    return value is None or bool(pd.isna(value))
 
 
 def _coerce_str(value: Any) -> str | None:
@@ -123,6 +99,23 @@ def _coerce_str(value: Any) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _derive_stem(cell: Any, source_map: SourceMap) -> str | None:
+    """The filename stem from a filename cell, per the map's rules.
+
+    Called only from inside pandas-using functions (after pandas is imported).
+    """
+    stem = _coerce_str(cell)
+    if stem is None:
+        return None
+    if source_map.filename_basename:
+        # ntpath splits on both "\" and "/", so a Windows path from an iTunes
+        # export works on any OS (posixpath ignores "\").
+        stem = ntpath.basename(stem)
+    if source_map.filename_strip_suffix:
+        stem = stem.removesuffix(source_map.filename_strip_suffix)
+    return stem
 
 
 def validate_frame(
@@ -146,8 +139,8 @@ def validate_frame(
             registry. Unknown ids / an empty iterable raise ``ValueError`` — even
             on an empty frame.
         exclude: check ids to remove. The adapter also auto-excludes
-            ``file_size`` when no size column resolves and ``filename_drift`` when
-            no filename column resolves, so neither fires spuriously on every row.
+            ``filename_drift`` when no filename column resolves, so it does not
+            fire spuriously on every row. It is then listed in ``skipped_checks``.
 
     Returns:
         A :class:`FrameValidationSummary`.
@@ -175,62 +168,68 @@ def validate_frame(
             raise ValueError(
                 "include must be a non-empty iterable of check ids or None"
             )
+    # Materialise exclude too: a one-shot iterator would be consumed by the
+    # validation call below and silently lost before the row loop.
+    if exclude is not None:
+        exclude = list(exclude)
     validate_row({}, include=include, exclude=exclude)
 
     # Resolve the (source, field_map) pair into one effective SourceMap.
     source_map = resolve_source_map(source=source, field_map=field_map, columns=columns)
 
     available = set(columns)
-    # Drop mapped columns absent from the DataFrame (lenient default, Q3): their
+    # Drop mapped columns absent from the DataFrame (lenient default, see
+    # "Missing Columns" in docs/architecture-checks-registry.md): their
     # canonical fields are never inserted, so dependent checks auto-skip.
     effective_columns = {
         raw: canonical
         for raw, canonical in source_map.columns.items()
         if raw in available
     }
-    # The two structural derivations are NOT members of columns; null them if
-    # they name a column absent from the DataFrame (design §4 step 2).
+    # The filename derivation is NOT a member of columns; null it if it names a
+    # column absent from the DataFrame.
     filename_from = (
         source_map.filename_from if source_map.filename_from in available else None
     )
-    size_from = source_map.size_from if source_map.size_from in available else None
 
-    # effective_exclude = caller exclude + runner-parameter auto-excludes
-    # (file_size / filename_drift) whose source column did not resolve.
-    effective_exclude = set(exclude or ())
-    if size_from is None:
-        effective_exclude |= {"file_size"}
+    # effective_exclude = caller exclude + the filename_drift auto-exclude when
+    # no filename column resolved.
+    auto_excluded: set[str] = set()
     if filename_from is None:
-        effective_exclude |= {"filename_drift"}
+        auto_excluded.add("filename_drift")
+    effective_exclude = set(exclude or ()) | auto_excluded
 
     summary = FrameValidationSummary()
+    # An auto-excluded check the caller selected could not run for lack of a
+    # column, so report it as skipped rather than hiding it.
+    summary.skipped_checks = {
+        check_id
+        for check_id in auto_excluded - set(exclude or ())
+        if include is None or check_id in include
+    }
 
     for idx, row in zip(df.index, df.to_dict(orient="records"), strict=True):
         fields: dict[str, Any] = {}
         for raw, canonical in effective_columns.items():
             cell = row.get(raw)
             if canonical in INT_FIELDS:
-                fields[canonical] = _coerce_int(cell)
+                # Only the missing gate here: validate_row parses the value and
+                # reports an unparseable one as a pydantic_error issue.
+                fields[canonical] = None if _is_missing(cell) else cell
             else:
                 fields[canonical] = _coerce_str(cell)
 
-        stem: str | None = None
-        if filename_from is not None:
-            stem = _coerce_str(row.get(filename_from))
-            if stem is not None:
-                if source_map.filename_basename:
-                    stem = os.path.basename(stem)
-                if source_map.filename_strip_suffix:
-                    stem = stem.removesuffix(source_map.filename_strip_suffix)
-
-        size = _coerce_int(row.get(size_from)) if size_from is not None else None
+        stem = (
+            _derive_stem(row.get(filename_from), source_map)
+            if filename_from is not None
+            else None
+        )
 
         result = validate_row(
             fields,
             include=include,
             exclude=effective_exclude,
             filename_stem=stem,
-            file_size_bytes=size,
         )
 
         summary.total += 1
@@ -240,6 +239,7 @@ def validate_frame(
             summary.passed += 1
         for issue in result.issues:
             summary.issue_counts[issue.code] += 1
+        summary.checks_run.update(result.ran)
         summary.skipped_checks.update(result.skipped)
 
     return summary
