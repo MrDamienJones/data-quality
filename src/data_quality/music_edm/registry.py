@@ -1,6 +1,6 @@
 """Ordered registry of individually addressable music-metadata checks.
 
-The checks of the original ``validate_metadata`` are held here as 15 named
+The checks of the original ``validate_metadata`` are held here as 16 named
 :class:`Check` units in :data:`CHECK_REGISTRY`, an ordered tuple. Each unit
 declares the canonical fields it needs to be *present* to run and a callable
 that appends issues to a :class:`ValidationResult`.
@@ -99,7 +99,7 @@ class Check:
         return not self.any_of or bool(self.any_of & present)
 
 
-# --- The 15 check callables ------------------------------------------------
+# --- The 16 check callables ------------------------------------------------
 
 
 def _check_missing_fields(ctx: CheckContext, result: ValidationResult) -> None:
