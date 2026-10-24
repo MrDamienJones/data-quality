@@ -1,16 +1,15 @@
 """Ordered registry of individually addressable music-metadata checks.
 
-The 16 hardwired blocks of the original ``validate_metadata`` are decomposed
-here into 15 named :class:`Check` units (blocks 12 and 13 merged into one
-``publisher_grouping`` unit) held in :data:`CHECK_REGISTRY`, an ordered tuple.
-Each unit declares the canonical fields it needs to be *present* to run and a
-callable that appends issues to a :class:`ValidationResult`.
+The checks of the original ``validate_metadata`` are held here as 13 named
+:class:`Check` units in :data:`CHECK_REGISTRY`, an ordered tuple. Each unit
+declares the canonical fields it needs to be *present* to run and a callable
+that appends issues to a :class:`ValidationResult`.
 
-The check callables are lifted verbatim out of the original function, so every
-emitted message, code and field tag is byte-identical. :func:`validate_row`
-runs a selectable subset of the registry over one dict of fields, auto-skipping
-checks whose required fields are absent and recording which checks were skipped.
-``checks.validate_metadata`` is a thin wrapper over :func:`validate_row`.
+:func:`validate_row` runs a selectable subset of the registry over one dict of
+fields, auto-skipping checks whose required fields are absent and recording
+which checks ran and which were skipped. ``checks.validate_metadata`` is a thin
+wrapper over :func:`validate_row`. Design decisions are recorded in
+``docs/architecture-checks-registry.md``.
 """
 
 from __future__ import annotations
@@ -21,7 +20,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
 from ..core.result import ValidationResult
 from .checks import EXPECTED_FIELDS
@@ -31,10 +30,35 @@ from .constants import (
     CAMELOT_KEYS,
     CAMELOT_NOTATIONS,
     INITIALKEY_NOTATIONS,
-    MIN_FILE_SIZE_BYTES,
+    INT_FIELDS,
     YEAR_MIN,
 )
-from .models import AudioMetadata, generate_filename
+from .filenames import generate_filename
+
+_INT_ADAPTER = TypeAdapter(int)
+
+
+def _resolve_int_field(name: str, value: Any, result: ValidationResult) -> int | None:
+    """Parse an int-typed canonical field, reporting a bad value as an issue.
+
+    The checks compare these values numerically, so a tag read as text
+    (``"128"``) or an integral float is parsed to ``int`` with pydantic's lax
+    rules. Blank text is ``None``. A value that cannot be read as an integer
+    (``"128a"``, ``128.5``, ``inf``, a bool) is a data quality problem, not a
+    crash: it is recorded as a ``pydantic_error`` issue on that field and
+    treated as ``None`` by the checks.
+    """
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    if isinstance(value, bool):
+        msg = "Input should be a valid integer, got a boolean"
+    else:
+        try:
+            return _INT_ADAPTER.validate_python(value)
+        except ValidationError as e:
+            msg = e.errors()[0]["msg"]
+    result.add_issue(f"Pydantic: {name}: {msg}", "pydantic_error", name)
+    return None
 
 
 @dataclass(frozen=True)
@@ -45,41 +69,50 @@ class CheckContext:
     key present, ``None`` where the source supplied nothing); callables read
     from it via ``.get()`` so they never ``KeyError``. ``current_year`` is
     captured once per :func:`validate_row` call so every check sees the same
-    "now".
+    "now". ``present`` is the set of canonical fields the source supplied (the
+    same set the auto-skip gate reads).
     """
 
     fields: dict[str, Any]
     filename_stem: str | None
-    file_size_bytes: int | None
     current_year: int
+    present: frozenset[str]
 
 
 @dataclass(frozen=True)
 class Check:
-    """One addressable check unit in the registry."""
+    """One addressable check unit in the registry.
+
+    The check runs when every field in ``required`` is present and, if
+    ``any_of`` is non-empty, at least one field in ``any_of`` is present.
+    """
 
     id: str
     required: frozenset[str]
     run: Callable[[CheckContext, ValidationResult], None]
+    any_of: frozenset[str] = frozenset()
+
+    def can_run(self, present: frozenset[str]) -> bool:
+        """``True`` when the fields in ``present`` satisfy this check's gate."""
+        if not self.required <= present:
+            return False
+        return not self.any_of or bool(self.any_of & present)
 
 
-# --- The 15 check callables (lifted verbatim from validate_metadata) ---------
+# --- The 13 check callables ------------------------------------------------
 
 
 def _check_missing_fields(ctx: CheckContext, result: ValidationResult) -> None:
-    # 1. Required fields present
-    required = {
-        "title": ctx.fields.get("title"),
-        "artist": ctx.fields.get("artist"),
-        "album": ctx.fields.get("album"),
-        "initialkey": ctx.fields.get("initialkey"),
-        "encodedby": ctx.fields.get("encodedby"),
-        "album_artist": ctx.fields.get("album_artist"),
-        "album_artist_sort": ctx.fields.get("album_artist_sort"),
-        "subtitle": ctx.fields.get("subtitle"),
-        "year": ctx.fields.get("year"),
-    }
-    missing = [name for name, value in required.items() if not value]
+    # 1. Required fields present. Only the guard fields the source carries are
+    # checked, so a source without (say) album_artist_sort still has its blank
+    # titles reported. A field already reported as unparseable is not also
+    # "missing".
+    flagged = result.flagged_fields()
+    missing = [
+        name
+        for name in _GUARD_FIELDS_ORDERED
+        if name in ctx.present and not ctx.fields.get(name) and name not in flagged
+    ]
     if missing:
         result.add_issue(
             f"Missing fields: {', '.join(missing)}",
@@ -192,10 +225,19 @@ def _check_filename_drift(ctx: CheckContext, result: ValidationResult) -> None:
     if artist and title:
         try:
             expected_fn = generate_filename(artist, title)
-            if ctx.filename_stem != expected_fn:
+            stem = ctx.filename_stem
+            if stem is not None and stem.lower() == expected_fn.lower():
+                if stem != expected_fn:
+                    # Same name apart from letter case: a separate code so it
+                    # can be triaged apart from real content drift.
+                    result.add_issue(
+                        f"Filename case drift: got '{stem}', expected '{expected_fn}'",
+                        "filename_case_drift",
+                        "filename",
+                    )
+            else:
                 result.add_issue(
-                    f"Filename drift: got '{ctx.filename_stem}', "
-                    f"expected '{expected_fn}'",
+                    f"Filename drift: got '{stem}', expected '{expected_fn}'",
                     "filename_drift",
                     "filename",
                 )
@@ -263,78 +305,40 @@ def _check_publisher_grouping(ctx: CheckContext, result: ValidationResult) -> No
 def _check_discogs_missing(ctx: CheckContext, result: ValidationResult) -> None:
     # 14. Discogs ID present
     discogs = ctx.fields.get("discogs_id")
+    # An unparseable id was already reported; it is not "missing or zero".
+    if "discogs_id" in result.flagged_fields():
+        return
     if discogs is None or discogs == 0:
         result.add_issue("Discogs ID missing or zero", "discogs_missing", "discogs_id")
-
-
-def _check_file_size(ctx: CheckContext, result: ValidationResult) -> None:
-    # 15. File size sanity
-    if ctx.file_size_bytes is None:
-        result.add_issue("Could not read file size", "file_size", "file_size")
-    elif ctx.file_size_bytes < MIN_FILE_SIZE_BYTES:
+    elif discogs < 0:
         result.add_issue(
-            f"Suspiciously small file: {ctx.file_size_bytes} bytes",
-            "file_size",
-            "file_size",
+            f"Discogs ID out of range: {discogs} (must be positive)",
+            "value_out_of_range",
+            "discogs_id",
         )
-
-
-def _check_pydantic_fallback(ctx: CheckContext, result: ValidationResult) -> None:
-    # 16. Full Pydantic validation — only reports problems on fields the
-    # explicit checks above did not already flag, so nothing is counted twice.
-    # Gated on "no missing_fields issue recorded so far" (equivalent to the
-    # original `if not missing:`).
-    if any(issue.code == "missing_fields" for issue in result.issues):
-        return
-    try:
-        AudioMetadata(
-            bpm=ctx.fields.get("bpm"),
-            track_number=ctx.fields.get("track_number"),
-            publisher=ctx.fields.get("publisher"),
-            grouping=ctx.fields.get("grouping"),
-            discogs_id=ctx.fields.get("discogs_id") or 0,
-            year=ctx.fields.get("year"),
-            title=ctx.fields.get("title"),
-            album=ctx.fields.get("album"),
-            initialkey=ctx.fields.get("initialkey"),
-            encodedby=ctx.fields.get("encodedby"),
-            artist=ctx.fields.get("artist"),
-            album_artist=ctx.fields.get("album_artist"),
-            album_artist_sort=ctx.fields.get("album_artist_sort"),
-            subtitle=ctx.fields.get("subtitle"),
-            filename=ctx.filename_stem,
-        )
-    except ValidationError as e:
-        flagged = result.flagged_fields()
-        for error in e.errors():
-            field = str(error["loc"][0]) if error.get("loc") else "unknown"
-            if field in flagged:
-                continue
-            msg = error.get("msg", "validation error")
-            result.add_issue(f"Pydantic: {field}: {msg}", "pydantic_error", field)
 
 
 # --- The ordered registry ----------------------------------------------------
 
-# Required-field sets use the INTERSECTION rule (design §1): the fields without
+# Required-field sets use the INTERSECTION rule ("Required-Field Rule" in
+# docs/architecture-checks-registry.md): the fields without
 # which *no* branch of the check can fire — not the union of every field any
 # branch mentions.
-_GUARD_FIELDS = frozenset(
-    {
-        "title",
-        "artist",
-        "album",
-        "initialkey",
-        "encodedby",
-        "album_artist",
-        "album_artist_sort",
-        "subtitle",
-        "year",
-    }
+_GUARD_FIELDS_ORDERED = (
+    "title",
+    "artist",
+    "album",
+    "initialkey",
+    "encodedby",
+    "album_artist",
+    "album_artist_sort",
+    "subtitle",
+    "year",
 )
+_GUARD_FIELDS = frozenset(_GUARD_FIELDS_ORDERED)
 
 CHECK_REGISTRY: tuple[Check, ...] = (
-    Check("missing_fields", _GUARD_FIELDS, _check_missing_fields),
+    Check("missing_fields", frozenset(), _check_missing_fields, _GUARD_FIELDS),
     Check("bpm_range", frozenset({"bpm"}), _check_bpm_range),
     Check("year_range", frozenset({"year"}), _check_year_range),
     Check(
@@ -359,8 +363,6 @@ CHECK_REGISTRY: tuple[Check, ...] = (
     Check("title_format", frozenset({"title"}), _check_title_format),
     Check("publisher_grouping", frozenset(), _check_publisher_grouping),
     Check("discogs_missing", frozenset({"discogs_id"}), _check_discogs_missing),
-    Check("file_size", frozenset(), _check_file_size),
-    Check("pydantic_fallback", _GUARD_FIELDS, _check_pydantic_fallback),
 )
 
 _REGISTRY_BY_ID: dict[str, Check] = {check.id: check for check in CHECK_REGISTRY}
@@ -387,7 +389,6 @@ def validate_row(
     include: Iterable[str] | None = None,
     exclude: Iterable[str] | None = None,
     filename_stem: str | None = None,
-    file_size_bytes: int | None = None,
     _resolve_all: bool = False,
 ) -> ValidationResult:
     """Run a selectable subset of the registry over one dict of fields.
@@ -396,19 +397,24 @@ def validate_row(
         fields: canonical field values. On this path a key's *presence* (not its
             value) gates whether a check that requires it runs; absent required
             fields auto-skip the check and record its id in ``result.skipped``.
+            Int fields (``bpm``, ``track_number``, ``year``, ``discogs_id``)
+            accept ints, integral floats or integer strings such as ``"128"``;
+            any other value is reported as a ``pydantic_error`` issue.
         include: check ids to run, in registry order. ``None`` runs the full
             registry. An empty iterable is a caller error and raises
             ``ValueError``. Unknown ids raise ``ValueError``.
         exclude: check ids to remove from the selected set. ``exclude`` is
             applied after ``include`` — exclude always wins on conflict. Unknown
             ids raise ``ValueError``; an empty iterable is benign.
-        filename_stem: passed to the filename-drift and pydantic-fallback checks.
-        file_size_bytes: passed to the file-size check.
+        filename_stem: passed to the filename-drift check.
 
     Returns:
         A :class:`ValidationResult` with ``passed``, structured ``issues``, the
-        full canonical ``fields`` snapshot, and the auto-skipped check ids in
-        ``skipped``.
+        full canonical ``fields`` snapshot, the ids of the checks that ran in
+        ``ran``, and the auto-skipped check ids in ``skipped``.
+
+    Raises:
+        ValueError: for unknown/empty include/exclude ids.
     """
     current_year = datetime.now().year
 
@@ -435,23 +441,31 @@ def validate_row(
         if include_set is None or check.id in include_set
     } - exclude_set
 
-    present = set(EXPECTED_FIELDS) if _resolve_all else set(fields)
+    present = frozenset(EXPECTED_FIELDS) if _resolve_all else frozenset(fields)
 
     result = ValidationResult()
-    result.fields = {name: fields.get(name) for name in EXPECTED_FIELDS}
+    result.fields = {
+        name: (
+            _resolve_int_field(name, fields.get(name), result)
+            if name in INT_FIELDS
+            else fields.get(name)
+        )
+        for name in EXPECTED_FIELDS
+    }
 
     ctx = CheckContext(
         fields=result.fields,
         filename_stem=filename_stem,
-        file_size_bytes=file_size_bytes,
         current_year=current_year,
+        present=present,
     )
 
     for check in CHECK_REGISTRY:
         if check.id not in selected:
             continue
-        if check.required <= present:
+        if check.can_run(present):
             check.run(ctx, result)
+            result.ran.append(check.id)
         else:
             result.skipped.append(check.id)
 

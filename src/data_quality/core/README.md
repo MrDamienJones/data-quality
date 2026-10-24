@@ -1,7 +1,7 @@
 # data_quality.core
 
-Domain-agnostic primitives shared by every domain subpackage (music, garmin,
-pdf, ...). No domain knowledge, no I/O dependencies.
+Domain-agnostic primitives shared by every domain subpackage. No domain
+knowledge, no I/O dependencies.
 
 ```python
 from data_quality.core import ValidationIssue, ValidationResult
@@ -32,13 +32,14 @@ result.add_issue("something wrong", code="my_code", field="my_field")
 result.passed  # False once any issue is added
 result.issues  # list[ValidationIssue]
 result.fields  # dict of the values that were validated (optional)
+result.ran  # ids of the checks that ran, in run order
+result.skipped  # ids of the checks that could not run for lack of input
 result.flagged_fields()  # set of field names already reported
 bool(result)  # same as result.passed
 ```
 
-`flagged_fields()` splits comma-separated field names so a later pass (e.g. full
-model validation) can skip fields an explicit check already reported, avoiding
-double-counting.
+`flagged_fields()` splits comma-separated field names so a later check can
+skip fields that an earlier check already reported, avoiding double-counting.
 
 ## Writing a new domain
 

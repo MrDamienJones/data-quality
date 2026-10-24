@@ -18,8 +18,6 @@ EXPECTED_IDS = [
     "title_format",
     "publisher_grouping",
     "discogs_missing",
-    "file_size",
-    "pydantic_fallback",
 ]
 
 
@@ -89,11 +87,86 @@ def test_out_of_range_value_fires():
 
 
 def test_empty_required_checks_never_skip():
-    # publisher_grouping and file_size have empty required sets, so they always
-    # run and never land in skipped regardless of the input dict.
+    # publisher_grouping has an empty required set, so it always runs and never
+    # lands in skipped regardless of the input dict.
     result = validate_row({})
     assert "publisher_grouping" not in result.skipped
-    assert "file_size" not in result.skipped
+    assert "publisher_grouping" in result.ran
+
+
+def test_missing_fields_checks_only_guard_fields_present():
+    # album_artist_sort etc. absent: only the carried guard fields are checked.
+    result = validate_row(
+        {"title": None, "artist": "A", "year": 2020}, include=["missing_fields"]
+    )
+    assert [(i.code, i.field) for i in result.issues] == [("missing_fields", "title")]
+    assert result.ran == ["missing_fields"]
+
+
+def test_missing_fields_skips_when_no_guard_field_present():
+    result = validate_row({"bpm": 128}, include=["missing_fields"])
+    assert result.skipped == ["missing_fields"]
+    assert result.ran == []
+
+
+def test_ran_lists_checks_in_registry_order():
+    result = validate_row({"year": 2000}, include=["year_range", "missing_fields"])
+    assert result.ran == ["missing_fields", "year_range"]
+
+
+def test_negative_discogs_id_out_of_range():
+    result = validate_row({"discogs_id": -5}, include=["discogs_missing"])
+    assert [(i.code, i.field) for i in result.issues] == [
+        ("value_out_of_range", "discogs_id")
+    ]
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [("128", 128), (" 128 ", 128), (128.0, 128), ("", None), (None, None)],
+)
+def test_int_fields_coerced(raw, expected):
+    result = validate_row({"bpm": raw}, include=["bpm_range"])
+    assert result.fields["bpm"] == expected
+    assert result.issues == []
+
+
+def test_int_string_still_range_checked():
+    result = validate_row({"bpm": "50"}, include=["bpm_range"])
+    assert [issue.code for issue in result.issues] == ["value_out_of_range"]
+
+
+@pytest.mark.parametrize("raw", ["128a", 128.5, float("inf"), True])
+def test_unparseable_int_field_is_reported_not_raised(raw):
+    result = validate_row({"bpm": raw}, include=["bpm_range"])
+    assert result.fields["bpm"] is None
+    assert [(i.code, i.field) for i in result.issues] == [("pydantic_error", "bpm")]
+    assert result.issues[0].startswith("Pydantic: bpm: Input should be")
+
+
+def test_unparseable_year_not_also_reported_missing():
+    # Every guard field present so missing_fields runs; only year is bad.
+    fields = dict.fromkeys(
+        (
+            "title",
+            "artist",
+            "album",
+            "initialkey",
+            "encodedby",
+            "album_artist",
+            "album_artist_sort",
+            "subtitle",
+        ),
+        "x",
+    )
+    fields["year"] = "20x0"
+    result = validate_row(fields, include=["missing_fields"])
+    assert [(i.code, i.field) for i in result.issues] == [("pydantic_error", "year")]
+
+
+def test_unparseable_discogs_id_not_also_reported_missing():
+    result = validate_row({"discogs_id": "abc"}, include=["discogs_missing"])
+    assert [i.code for i in result.issues] == ["pydantic_error"]
 
 
 def test_result_fields_is_always_full_canonical_shape():

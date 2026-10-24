@@ -1,4 +1,4 @@
-"""Pandas-optionality guards (design §6).
+"""Pandas-optionality guards ("Pandas Is Optional" in the design doc).
 
 The adapter names must bind without touching pandas, and calling
 ``validate_frame`` with pandas unavailable must raise an actionable ImportError

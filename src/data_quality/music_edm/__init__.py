@@ -2,8 +2,7 @@
 
 Public API:
 
-- Models: ``AudioMetadata``, ``Config``, ``MetadataMapping``, ``PathConfig``,
-  ``ValidationConfig``, ``AudioFormatEnum``, and ``generate_filename``.
+- Filenames: ``generate_filename``.
 - Checks: ``validate_metadata`` (the full suite on an extracted dict) and
   ``categorize_issue``.
 - Constants: ranges, Camelot maps, enums and the check-type map.
@@ -19,22 +18,14 @@ from .constants import (
     CHARACTER_REPLACEMENTS,
     CHECK_TYPES,
     INITIALKEY_NOTATIONS,
-    MIN_FILE_SIZE_BYTES,
     YEAR_MIN,
     AudioFormat,
     MetadataField,
 )
 from .field_maps import SourceMap, itunes_txt, mp3tag_csv
+from .filenames import generate_filename
 from .frame import FrameValidationSummary, validate_frame
-from .models import (
-    AudioFormatEnum,
-    AudioMetadata,
-    Config,
-    MetadataMapping,
-    PathConfig,
-    ValidationConfig,
-    generate_filename,
-)
+from .reconcile import FieldMismatch, ReconcileSummary, reconcile_frames
 from .registry import CHECK_REGISTRY, Check, list_checks, validate_row
 
 __all__ = [
@@ -50,6 +41,10 @@ __all__ = [
     # pandas adapter (optional; pandas imported lazily at call time)
     "validate_frame",
     "FrameValidationSummary",
+    # cross-source reconciliation (optional; pandas imported lazily)
+    "reconcile_frames",
+    "ReconcileSummary",
+    "FieldMismatch",
     # field maps
     "SourceMap",
     "mp3tag_csv",
@@ -57,13 +52,7 @@ __all__ = [
     # results (re-exported for convenience)
     "ValidationIssue",
     "ValidationResult",
-    # models
-    "AudioMetadata",
-    "Config",
-    "MetadataMapping",
-    "PathConfig",
-    "ValidationConfig",
-    "AudioFormatEnum",
+    # filenames
     "generate_filename",
     # constants
     "AudioFormat",
@@ -71,7 +60,6 @@ __all__ = [
     "BPM_MIN",
     "BPM_MAX",
     "YEAR_MIN",
-    "MIN_FILE_SIZE_BYTES",
     "CAMELOT_NOTATIONS",
     "INITIALKEY_NOTATIONS",
     "CAMELOT_KEYS",

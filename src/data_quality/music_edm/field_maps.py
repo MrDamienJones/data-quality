@@ -2,13 +2,14 @@
 
 A :class:`SourceMap` describes how a raw tabular source (an mp3tag CSV export,
 an iTunes text export, ...) maps its columns onto the canonical field names the
-checks expect, plus the two "special" derivations ``filename_stem`` and
-``file_size_bytes``.
+checks expect, plus the "special" columns for the filename stem and the
+full file path.
 
 Two maps ship ready to use: :data:`mp3tag_csv` and :data:`itunes_txt`. Consuming
 repos get a single source of truth for both the checks and the column mappings.
 The :func:`resolve_source_map` resolver turns a ``(source, field_map)`` pair into
-one effective :class:`SourceMap` following the precedence rules in design §5.
+one effective :class:`SourceMap` following the precedence rules in
+``docs/architecture-checks-registry.md`` ("Precedence of source and field_map").
 """
 
 from __future__ import annotations
@@ -26,6 +27,8 @@ class SourceMap:
 
     The ``columns`` convention is **raw-column-name -> canonical-field-name**
     (same direction as a ``field_map`` dict passed to ``validate_frame``).
+    ``path_from`` names the column holding the full file path; the
+    ``reconcile_frames`` cross-source check joins two sources on it.
     """
 
     name: str
@@ -33,7 +36,7 @@ class SourceMap:
     filename_from: str | None = None
     filename_strip_suffix: str = ".mp3"
     filename_basename: bool = False
-    size_from: str | None = None
+    path_from: str | None = None
 
 
 mp3tag_csv = SourceMap(
@@ -55,12 +58,12 @@ mp3tag_csv = SourceMap(
     filename_from="MTG-Filename",
     filename_strip_suffix=".mp3",
     filename_basename=False,
-    size_from="MTG-FileSizeBytes",
+    path_from="MTG-Path",
 )
 """mp3tag CSV export.
 
-Carries no ``album_artist_sort`` and no Discogs column, so ``missing_fields``,
-``pydantic_fallback`` and ``discogs_missing`` auto-skip for this source.
+Carries no ``album_artist_sort`` and no Discogs column, so ``discogs_missing``
+auto-skips and ``missing_fields`` checks only the guard fields it does carry.
 """
 
 
@@ -70,14 +73,14 @@ itunes_txt = SourceMap(
         "Name": "title",
         "Artist": "artist",
         "Album": "album",
-        "Grouping": "grouping",
+        "Work": "grouping",  # iTunes shows the content-group tag (TIT1) as Work
         "Track Number": "track_number",
         "Year": "year",
     },
     filename_from="Location",
     filename_strip_suffix=".mp3",
     filename_basename=True,
-    size_from=None,
+    path_from="Location",
 )
 """iTunes text export.
 
@@ -92,8 +95,7 @@ Camelot album codes still validate; standard iTunes exports should opt out::
 
 This source carries none of bpm/initialkey/encodedby/album_artist/
 album_artist_sort/subtitle/publisher/discogs_id, so the checks needing those
-auto-skip. It has no size column, so ``file_size`` is auto-excluded by the
-adapter (no "could not read file size" noise).
+auto-skip.
 """
 
 
@@ -111,10 +113,10 @@ def resolve_source_map(
 ) -> SourceMap:
     """Resolve a ``(source, field_map)`` pair into one effective ``SourceMap``.
 
-    Implements the six precedence cases of design §5:
+    Implements the six precedence cases in ``docs/architecture-checks-registry.md``:
 
     1. Both ``None`` -> identity source mapping each canonical name to itself;
-       ``filename_from``/``size_from`` are set only when their column is present
+       ``filename_from``/``path_from`` are set only when their column is present
        in ``columns``.
     2. ``source`` only -> the named :class:`SourceMap` as-is.
     3. ``field_map`` only as a plain dict -> a ``custom`` :class:`SourceMap`.
@@ -154,7 +156,7 @@ def resolve_source_map(
             name="identity",
             columns={name: name for name in EXPECTED_FIELDS},
             filename_from="filename_stem" if "filename_stem" in available else None,
-            size_from="file_size_bytes" if "file_size_bytes" in available else None,
+            path_from="path" if "path" in available else None,
         )
 
     if isinstance(field_map, SourceMap):
