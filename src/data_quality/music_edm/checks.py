@@ -46,6 +46,7 @@ _MESSAGE_PREFIXES: tuple[tuple[str, str, str], ...] = (
     ("Could not read metadata", "unreadable", "file"),
     ("Missing fields: ", "missing_fields", ""),
     ("BPM out of range", "value_out_of_range", "bpm"),
+    ("Track number out of range", "value_out_of_range", "track_number"),
     ("Year out of range", "value_out_of_range", "year"),
     ("Discogs ID out of range", "value_out_of_range", "discogs_id"),
     ("Discogs ID missing", "discogs_missing", "discogs_id"),
@@ -57,12 +58,11 @@ _MESSAGE_PREFIXES: tuple[tuple[str, str, str], ...] = (
     ("Subtitle drift", "subtitle_drift", "subtitle"),
     ("Filename case drift", "filename_case_drift", "filename"),
     ("Filename drift", "filename_drift", "filename"),
-    ("Filename generation error", "filename_drift", "filename"),
     ("album_artist_sort '", "artist_field_mismatch", "album_artist_sort"),
     ("album_artist '", "artist_field_mismatch", "album_artist"),
     ("Title missing parentheses", "title_format", "title"),
-    ("Publisher contains", "publisher_grouping", "publisher"),
-    ("Grouping contains", "publisher_grouping", "grouping"),
+    ("Publisher contains", "bracketed_numbers", "publisher"),
+    ("Grouping contains", "bracketed_numbers", "grouping"),
     ("Publisher '", "publisher_grouping", "grouping"),
 )
 

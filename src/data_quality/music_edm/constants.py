@@ -257,6 +257,7 @@ CHECK_TYPES = {
     "filename_case_drift": "cross_field",
     "artist_field_mismatch": "cross_field",
     "publisher_grouping": "cross_field",
+    "bracketed_numbers": "value_validity",
     "pydantic_error": "pydantic",
     # reconcile_frames (cross-source) codes
     "unmatched": "join",

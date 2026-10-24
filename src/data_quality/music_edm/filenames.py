@@ -29,10 +29,6 @@ def generate_filename(artist: str, title: str) -> str:
         filename = filename[:last_paren] + "-" + filename[last_paren + 1 :]
         filename = filename.replace("(", "").replace(")", "")
 
-    filename = filename.replace(" ", "")
-
-    dash_count = filename.count("-")
-    if dash_count > 2:
-        raise ValueError(f"Filename has {dash_count} dashes, maximum allowed is 2")
-
-    return filename
+    # At most two dashes remain: process_field strips every hyphen (including
+    # mapped lookalikes), so only the separator and the last "(" add one.
+    return filename.replace(" ", "")

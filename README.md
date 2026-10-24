@@ -52,7 +52,7 @@ it dependency-light and reusable across domains.
 Pin a tagged release (recommended):
 
 ```bash
-pip install "git+https://github.com/MrDamienJones/data-quality.git@v0.2.0"
+pip install "git+https://github.com/MrDamienJones/data-quality.git@v0.3.0"
 ```
 
 Track the default branch (less stable):
@@ -64,14 +64,14 @@ pip install "git+https://github.com/MrDamienJones/data-quality.git@main"
 In a consumer repo's `requirements.txt`:
 
 ```
-data-quality @ git+https://github.com/MrDamienJones/data-quality.git@v0.2.0
+data-quality @ git+https://github.com/MrDamienJones/data-quality.git@v0.3.0
 ```
 
 Or in a consumer `pyproject.toml`:
 
 ```toml
 dependencies = [
-    "data-quality @ git+https://github.com/MrDamienJones/data-quality.git@v0.2.0",
+    "data-quality @ git+https://github.com/MrDamienJones/data-quality.git@v0.3.0",
 ]
 ```
 
@@ -83,7 +83,7 @@ only hard dependency, and importing the package never pulls pandas. Install it
 only in repos that validate DataFrames:
 
 ```bash
-pip install "data-quality[pandas] @ git+https://github.com/MrDamienJones/data-quality.git@v0.2.0"
+pip install "data-quality[pandas] @ git+https://github.com/MrDamienJones/data-quality.git@v0.3.0"
 ```
 
 A repo that only validates one record at a time (dicts) needs nothing extra.
@@ -151,11 +151,11 @@ validate_frame(df, source="itunes_txt", exclude=["invalid_camelot"])
 from data_quality.music_edm import validate_row, list_checks
 
 validate_row(fields, exclude=["discogs_missing"])
-list_checks()  # the 13 check ids you can include/exclude
+list_checks()  # the 16 check ids you can include/exclude
 ```
 
 See the [music_edm docs](src/data_quality/music_edm/README.md) for the full field list,
-all 13 checks, the source maps, and the cross-source check.
+all 16 checks, the source maps, and the cross-source check.
 
 ## Development
 
