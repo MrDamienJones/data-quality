@@ -58,7 +58,7 @@ def test_mp3tag_frame_all_pass():
     # mp3tag_csv carries no discogs column, so only discogs_missing skips.
     assert summary.skipped_checks == {"discogs_missing"}
     assert "missing_fields" in summary.checks_run
-    assert len(summary.checks_selected) == 13
+    assert len(summary.checks_selected) == 16
 
 
 @pytest.mark.parametrize(
@@ -207,7 +207,7 @@ def test_itunes_txt_frame_skips_and_coverage():
                 "Artist": VALID_ARTIST,
                 "Album": VALID_ALBUM,
                 "Work": "Label",
-                "Track Number": 1,
+                "Track Number": VALID_BPM,
                 "Year": VALID_YEAR,
                 "Location": f"/music/{VALID_FILENAME_STEM}.mp3",
             }
@@ -220,16 +220,21 @@ def test_itunes_txt_frame_skips_and_coverage():
         "bpm_range",
         "bpm_track_mismatch",
         "corrupted_field",
+        "invalid_key",
         "key_album_mismatch",
         "subtitle_drift",
+        "publisher_grouping",  # no publisher column
         "discogs_missing",
     }
     assert summary.skipped_checks == expected_skips
+    # The track number is checked against the BPM range because BPM is absent.
+    assert "track_number_range" in summary.checks_run
+    assert "bracketed_numbers" in summary.checks_run
     # missing_fields runs on the guard fields iTunes carries.
     assert "missing_fields" in summary.checks_run
     # invalid_camelot was excluded by the caller, so it is in neither set.
-    assert len(summary.checks_run) == 6
-    assert len(summary.checks_selected) == 12
+    assert len(summary.checks_run) == 7
+    assert len(summary.checks_selected) == 15
 
 
 def test_itunes_windows_location_basename_on_any_os():

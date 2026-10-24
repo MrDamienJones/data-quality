@@ -2,7 +2,7 @@
 
 Audio metadata data quality checks for the EDM library, decoupled from file I/O.
 The caller supplies an extracted dict of fields (or a DataFrame); this package
-validates it. The checks are organised as an ordered **registry** of 13 named
+validates it. The checks are organised as an ordered **registry** of 16 named
 units, runnable individually, as a selectable subset, or across a whole
 DataFrame.
 
@@ -25,7 +25,7 @@ from data_quality.music_edm import (
 - `filenames.py` — `generate_filename`, which builds the file name stem the
   `filename_drift` check expects.
 - `registry.py` — the check registry: the frozen `Check` / `CheckContext` types,
-  the ordered `CHECK_REGISTRY` (13 units), `list_checks()`, and `validate_row`.
+  the ordered `CHECK_REGISTRY` (16 units), `list_checks()`, and `validate_row`.
 - `checks.py` — `validate_metadata(...)` (a thin wrapper over the registry),
   `categorize_issue(...)`, and `EXPECTED_FIELDS`.
 - `field_maps.py` — `SourceMap` plus the ready-made `mp3tag_csv` / `itunes_txt`
@@ -206,7 +206,7 @@ It then appears in `skipped_checks`, unless you excluded it yourself.
 
 ## Checks: ids, required fields, issue codes
 
-`list_checks()` returns these 13 ids in this order. The **id** is the registry
+`list_checks()` returns these 16 ids in this order. The **id** is the registry
 handle (for include/exclude); the **code** is what each issue carries and what
 `CHECK_TYPES` / `categorize_issue` key on. They coincide except where noted.
 
@@ -214,31 +214,30 @@ handle (for include/exclude); the **code** is what each issue carries and what
 |---|----|----------------------------------------|---------------|
 | 1 | `missing_fields` | at least one of: title, artist, album, initialkey, encodedby, album_artist, album_artist_sort, subtitle, year | `missing_fields` |
 | 2 | `bpm_range` | bpm | `value_out_of_range` |
-| 3 | `year_range` | year | `value_out_of_range` |
-| 4 | `bpm_track_mismatch` | bpm, track_number | `bpm_track_mismatch` |
-| 5 | `invalid_camelot` | album | `invalid_camelot` |
-| 6 | `corrupted_field` | initialkey | `corrupted_field` |
-| 7 | `key_album_mismatch` | initialkey | `invalid_key`, `key_album_mismatch` |
-| 8 | `subtitle_drift` | artist, title, album, bpm, year, subtitle | `subtitle_drift` |
-| 9 | `filename_drift` | artist, title (+ `filename_stem` runner param) | `filename_drift`, `filename_case_drift` |
-| 10 | `artist_field_mismatch` | artist | `artist_field_mismatch` |
-| 11 | `title_format` | title | `title_format` |
-| 12 | `publisher_grouping` | *(none — three internal guards)* | `publisher_grouping` |
-| 13 | `discogs_missing` | discogs_id | `discogs_missing`, `value_out_of_range` (negative id) |
+| 3 | `track_number_range` | track_number (reports only when bpm is blank) | `value_out_of_range` |
+| 4 | `year_range` | year | `value_out_of_range` |
+| 5 | `bpm_track_mismatch` | bpm, track_number | `bpm_track_mismatch` |
+| 6 | `invalid_camelot` | album | `invalid_camelot` |
+| 7 | `corrupted_field` | initialkey | `corrupted_field` |
+| 8 | `invalid_key` | initialkey | `invalid_key` |
+| 9 | `key_album_mismatch` | initialkey, album | `key_album_mismatch` |
+| 10 | `subtitle_drift` | artist, title, album, bpm, year, subtitle | `subtitle_drift` |
+| 11 | `filename_drift` | artist, title (+ `filename_stem` runner param) | `filename_drift`, `filename_case_drift` |
+| 12 | `artist_field_mismatch` | artist | `artist_field_mismatch` |
+| 13 | `title_format` | title | `title_format` |
+| 14 | `publisher_grouping` | publisher, grouping | `publisher_grouping` |
+| 15 | `bracketed_numbers` | at least one of: publisher, grouping | `bracketed_numbers` |
+| 16 | `discogs_missing` | discogs_id | `discogs_missing`, `value_out_of_range` (negative id) |
 
 Notes:
 
-- `bpm_range` and `year_range` are separate checks that both emit
-  `value_out_of_range`. `key_album_mismatch` can emit `invalid_key` and/or
-  `key_album_mismatch`.
+- `bpm_range`, `track_number_range` and `year_range` are separate checks that
+  all emit `value_out_of_range`.
 - `filename_drift` emits `filename_case_drift` when the file name matches the
   expected name apart from letter case, and `filename_drift` for any other
   difference.
 - `pydantic_error` is the code for an int field whose value cannot be read as
   an integer (see above). No check has that id.
-- Original blocks 12 and 13 (publisher==grouping, and bracketed-number cleanup)
-  are merged into the single `publisher_grouping` unit. `invalid_key` is only an
-  emitted code of `key_album_mismatch`, never a separate registry id.
 - `required` is the set of fields whose **presence** gates running the check;
   each check's own internal guards still decide whether an issue fires.
 

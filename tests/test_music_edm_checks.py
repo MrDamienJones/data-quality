@@ -168,7 +168,7 @@ def test_publisher_bracketed_numbers():
     fields["publisher"] = "Label (123)"
     fields["grouping"] = "Label (123)"
     result = validate_metadata(fields, VALID_FILENAME_STEM)
-    assert "publisher_grouping" in codes(result)
+    assert codes(result) == {"bracketed_numbers"}
 
 
 def test_discogs_missing():
@@ -199,6 +199,7 @@ def _one_issue_per_message_kind():
     cases = [
         ({"title": None, "artist": TRICKY_ARTIST, "year": None}, {}),
         ({"bpm": 50}, {}),
+        ({"track_number": 50}, {}),
         ({"year": 1900}, {}),
         ({"discogs_id": None}, {}),
         ({"discogs_id": -1}, {}),
@@ -279,10 +280,22 @@ class TestGenerateFilename:
         assert generate_filename("Beyoncé", "Déjà (Vu)") == "Beyonce-Deja-Vu"
 
     def test_two_dashes_allowed(self):
-        # Separator dash + the dash from the final "(" is the 2-dash maximum
-        # reachable through the public function (internal hyphens are stripped,
-        # so the ">2 dashes" guard is defensive and not exercised here).
+        # Separator dash + the dash from the final "(" is the 2-dash maximum.
         assert generate_filename("A (b) (c)", "T (d) (e)") == "Abc-Td-e"
+
+    @pytest.mark.parametrize(
+        ("artist", "title"),
+        [
+            ("A-B-C", "D-E-F (G-H) (I-J)"),
+            ("A ‐ B – C", "((T)) - (x) - (y)"),
+            ("-", "-"),
+            ("A (B (C) D)", "(((((("),
+        ],
+    )
+    def test_never_more_than_two_dashes(self, artist, title):
+        # Every hyphen in a field is stripped, including mapped lookalikes, so
+        # only the separator and the last "(" can add a dash.
+        assert generate_filename(artist, title).count("-") <= 2
 
     def test_unicode_hyphen_normalized_like_ascii(self):
         # U+2010 (HYPHEN), seen in the real iTunes export, must behave exactly
@@ -330,3 +343,11 @@ def test_audio_format_from_extension(ext):
 def test_audio_format_unsupported_extension_raises():
     with pytest.raises(ValueError, match="Unsupported format: ogg"):
         AudioFormat.from_extension(".ogg")
+
+
+def test_categorize_structured_issue_returns_its_own_code():
+    # A structured issue keeps its code and field, whatever its message says.
+    from data_quality.music_edm import ValidationIssue
+
+    issue = ValidationIssue("Missing fields: title", "subtitle_drift", "subtitle")
+    assert categorize_issue(issue) == ("subtitle_drift", "subtitle")

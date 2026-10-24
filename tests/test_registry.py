@@ -7,16 +7,19 @@ from data_quality.music_edm import list_checks, validate_row
 EXPECTED_IDS = [
     "missing_fields",
     "bpm_range",
+    "track_number_range",
     "year_range",
     "bpm_track_mismatch",
     "invalid_camelot",
     "corrupted_field",
+    "invalid_key",
     "key_album_mismatch",
     "subtitle_drift",
     "filename_drift",
     "artist_field_mismatch",
     "title_format",
     "publisher_grouping",
+    "bracketed_numbers",
     "discogs_missing",
 ]
 
@@ -86,12 +89,43 @@ def test_out_of_range_value_fires():
     assert [issue.code for issue in result.issues] == ["value_out_of_range"]
 
 
-def test_empty_required_checks_never_skip():
-    # publisher_grouping has an empty required set, so it always runs and never
-    # lands in skipped regardless of the input dict.
+def test_empty_row_runs_no_check():
+    # Every check needs at least one field, so an empty row skips them all.
     result = validate_row({})
-    assert "publisher_grouping" not in result.skipped
-    assert "publisher_grouping" in result.ran
+    assert result.ran == []
+    assert result.skipped == EXPECTED_IDS
+
+
+def test_track_number_range_only_when_bpm_blank():
+    absent = validate_row({"track_number": 50})
+    blank = validate_row({"track_number": 50, "bpm": None})
+    present = validate_row({"track_number": 50, "bpm": 128})
+    assert ("value_out_of_range", "track_number") in {
+        (i.code, i.field) for i in absent.issues
+    }
+    assert ("value_out_of_range", "track_number") in {
+        (i.code, i.field) for i in blank.issues
+    }
+    # With a BPM present, bpm_track_mismatch reports it instead.
+    assert [i.code for i in present.issues] == ["bpm_track_mismatch"]
+
+
+def test_split_key_checks_skip_independently():
+    # A key with no album column: invalid_key runs, key_album_mismatch skips.
+    result = validate_row({"initialkey": "Xm"})
+    assert "invalid_key" in result.ran
+    assert "key_album_mismatch" in result.skipped
+    assert [i.code for i in result.issues] == ["invalid_key"]
+
+
+def test_split_publisher_checks_skip_independently():
+    # A grouping with no publisher column (as in iTunes exports).
+    result = validate_row({"grouping": "Label (12)"})
+    assert "publisher_grouping" in result.skipped
+    assert "bracketed_numbers" in result.ran
+    assert [(i.code, i.field) for i in result.issues] == [
+        ("bracketed_numbers", "grouping")
+    ]
 
 
 def test_missing_fields_checks_only_guard_fields_present():
@@ -174,3 +208,37 @@ def test_result_fields_is_always_full_canonical_shape():
     # Every canonical field key is present even when the source supplied none.
     for name in ("title", "artist", "album", "discogs_id", "year"):
         assert name in result.fields
+
+
+def _issues(fields):
+    return [(i.code, i.field) for i in validate_row(fields).issues]
+
+
+def test_corrupted_key_reported_once():
+    # invalid_key and key_album_mismatch leave a corrupted key to corrupted_field.
+    assert _issues({"initialkey": "C/", "album": "08B-CM"}) == [
+        ("corrupted_field", "initialkey")
+    ]
+
+
+@pytest.mark.parametrize(
+    ("track", "reported"), [(99, True), (100, False), (200, False), (201, True)]
+)
+def test_track_number_range_boundaries(track, reported):
+    issue = ("value_out_of_range", "track_number")
+    assert (issue in _issues({"track_number": track})) is reported
+
+
+def test_unparseable_bpm_counts_as_blank_for_track_number():
+    # The bad BPM is reported, and the track number is still range-checked.
+    assert _issues({"track_number": 250, "bpm": "12x"}) == [
+        ("pydantic_error", "bpm"),
+        ("value_out_of_range", "track_number"),
+    ]
+
+
+def test_bracketed_numbers_reports_each_field():
+    assert _issues({"publisher": "Label (1)", "grouping": "Label (1)"}) == [
+        ("bracketed_numbers", "publisher"),
+        ("bracketed_numbers", "grouping"),
+    ]

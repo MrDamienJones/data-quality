@@ -1,6 +1,6 @@
 """Ordered registry of individually addressable music-metadata checks.
 
-The checks of the original ``validate_metadata`` are held here as 13 named
+The checks of the original ``validate_metadata`` are held here as 15 named
 :class:`Check` units in :data:`CHECK_REGISTRY`, an ordered tuple. Each unit
 declares the canonical fields it needs to be *present* to run and a callable
 that appends issues to a :class:`ValidationResult`.
@@ -99,7 +99,7 @@ class Check:
         return not self.any_of or bool(self.any_of & present)
 
 
-# --- The 13 check callables ------------------------------------------------
+# --- The 15 check callables ------------------------------------------------
 
 
 def _check_missing_fields(ctx: CheckContext, result: ValidationResult) -> None:
@@ -129,6 +129,22 @@ def _check_bpm_range(ctx: CheckContext, result: ValidationResult) -> None:
             f"BPM out of range: {bpm} (must be {BPM_MIN}-{BPM_MAX})",
             "value_out_of_range",
             "bpm",
+        )
+
+
+def _check_track_number_range(ctx: CheckContext, result: ValidationResult) -> None:
+    # Track number range, only when BPM is blank: the track number holds the
+    # BPM, and with a BPM present bpm_range and bpm_track_mismatch cover it.
+    track = ctx.fields.get("track_number")
+    if (
+        ctx.fields.get("bpm") is None
+        and track is not None
+        and (track < BPM_MIN or track > BPM_MAX)
+    ):
+        result.add_issue(
+            f"Track number out of range: {track} (must be {BPM_MIN}-{BPM_MAX})",
+            "value_out_of_range",
+            "track_number",
         )
 
 
@@ -169,8 +185,7 @@ def _check_invalid_camelot(ctx: CheckContext, result: ValidationResult) -> None:
 def _check_corrupted_field(ctx: CheckContext, result: ValidationResult) -> None:
     # 6. Initial key corruption (null bytes, slashes)
     key = ctx.fields.get("initialkey")
-    corrupted_key = bool(key and ("\x00" in key or "/" in key))
-    if corrupted_key:
+    if _is_corrupted_key(key):
         result.add_issue(
             f"Corrupted initialkey value: '{repr(key)}'",
             "corrupted_field",
@@ -178,18 +193,27 @@ def _check_corrupted_field(ctx: CheckContext, result: ValidationResult) -> None:
         )
 
 
-def _check_key_album_mismatch(ctx: CheckContext, result: ValidationResult) -> None:
-    # 7. Initial key is valid and matches album
+def _is_corrupted_key(key: str | None) -> bool:
+    """A key containing a null byte or a slash (reported by corrupted_field)."""
+    return bool(key and ("\x00" in key or "/" in key))
+
+
+def _check_invalid_key(ctx: CheckContext, result: ValidationResult) -> None:
+    # Initial key is valid notation (a corrupted key is left to corrupted_field)
     key = ctx.fields.get("initialkey")
-    album = ctx.fields.get("album")
-    corrupted_key = bool(key and ("\x00" in key or "/" in key))
-    if key and not corrupted_key and key not in INITIALKEY_NOTATIONS:
+    if key and not _is_corrupted_key(key) and key not in INITIALKEY_NOTATIONS:
         result.add_issue(
             f"Initial key '{key}' is not valid notation",
             "invalid_key",
             "initialkey",
         )
-    if album and key and not corrupted_key:
+
+
+def _check_key_album_mismatch(ctx: CheckContext, result: ValidationResult) -> None:
+    # Initial key matches the key the Camelot album code implies
+    key = ctx.fields.get("initialkey")
+    album = ctx.fields.get("album")
+    if album and key and not _is_corrupted_key(key):
         expected_key = CAMELOT_KEYS.get(album)
         if expected_key and key != expected_key:
             result.add_issue(
@@ -222,29 +246,25 @@ def _check_filename_drift(ctx: CheckContext, result: ValidationResult) -> None:
     # 9. Filename matches generate_filename
     artist = ctx.fields.get("artist")
     title = ctx.fields.get("title")
-    if artist and title:
-        try:
-            expected_fn = generate_filename(artist, title)
-            stem = ctx.filename_stem
-            if stem is not None and stem.lower() == expected_fn.lower():
-                if stem != expected_fn:
-                    # Same name apart from letter case: a separate code so it
-                    # can be triaged apart from real content drift.
-                    result.add_issue(
-                        f"Filename case drift: got '{stem}', expected '{expected_fn}'",
-                        "filename_case_drift",
-                        "filename",
-                    )
-            else:
-                result.add_issue(
-                    f"Filename drift: got '{stem}', expected '{expected_fn}'",
-                    "filename_drift",
-                    "filename",
-                )
-        except ValueError as e:
+    if not (artist and title):
+        return
+    expected_fn = generate_filename(artist, title)
+    stem = ctx.filename_stem
+    if stem is not None and stem.lower() == expected_fn.lower():
+        if stem != expected_fn:
+            # Same name apart from letter case: a separate code so it can be
+            # triaged apart from real content drift.
             result.add_issue(
-                f"Filename generation error: {e}", "filename_drift", "filename"
+                f"Filename case drift: got '{stem}', expected '{expected_fn}'",
+                "filename_case_drift",
+                "filename",
             )
+    else:
+        result.add_issue(
+            f"Filename drift: got '{stem}', expected '{expected_fn}'",
+            "filename_drift",
+            "filename",
+        )
 
 
 def _check_artist_field_mismatch(ctx: CheckContext, result: ValidationResult) -> None:
@@ -277,7 +297,7 @@ def _check_title_format(ctx: CheckContext, result: ValidationResult) -> None:
 
 
 def _check_publisher_grouping(ctx: CheckContext, result: ValidationResult) -> None:
-    # 12. Publisher/grouping consistency
+    # Publisher and grouping hold the same label
     publisher = ctx.fields.get("publisher")
     grouping = ctx.fields.get("grouping")
     if publisher and grouping and publisher != grouping:
@@ -287,19 +307,20 @@ def _check_publisher_grouping(ctx: CheckContext, result: ValidationResult) -> No
             "grouping",
         )
 
-    # 13. Publisher/grouping bracket cleanup check
-    if publisher and re.search(r"[\(\[]\d+[\)\]]", publisher):
-        result.add_issue(
-            f"Publisher contains bracketed numbers: '{publisher}'",
-            "publisher_grouping",
-            "publisher",
-        )
-    if grouping and re.search(r"[\(\[]\d+[\)\]]", grouping):
-        result.add_issue(
-            f"Grouping contains bracketed numbers: '{grouping}'",
-            "publisher_grouping",
-            "grouping",
-        )
+
+_BRACKETED_NUMBER = re.compile(r"[\(\[]\d+[\)\]]")
+
+
+def _check_bracketed_numbers(ctx: CheckContext, result: ValidationResult) -> None:
+    # Publisher and grouping carry no bracketed numbers such as "Label (12)"
+    for name, label in (("publisher", "Publisher"), ("grouping", "Grouping")):
+        value = ctx.fields.get(name)
+        if value and _BRACKETED_NUMBER.search(value):
+            result.add_issue(
+                f"{label} contains bracketed numbers: '{value}'",
+                "bracketed_numbers",
+                name,
+            )
 
 
 def _check_discogs_missing(ctx: CheckContext, result: ValidationResult) -> None:
@@ -340,6 +361,7 @@ _GUARD_FIELDS = frozenset(_GUARD_FIELDS_ORDERED)
 CHECK_REGISTRY: tuple[Check, ...] = (
     Check("missing_fields", frozenset(), _check_missing_fields, _GUARD_FIELDS),
     Check("bpm_range", frozenset({"bpm"}), _check_bpm_range),
+    Check("track_number_range", frozenset({"track_number"}), _check_track_number_range),
     Check("year_range", frozenset({"year"}), _check_year_range),
     Check(
         "bpm_track_mismatch",
@@ -348,7 +370,12 @@ CHECK_REGISTRY: tuple[Check, ...] = (
     ),
     Check("invalid_camelot", frozenset({"album"}), _check_invalid_camelot),
     Check("corrupted_field", frozenset({"initialkey"}), _check_corrupted_field),
-    Check("key_album_mismatch", frozenset({"initialkey"}), _check_key_album_mismatch),
+    Check("invalid_key", frozenset({"initialkey"}), _check_invalid_key),
+    Check(
+        "key_album_mismatch",
+        frozenset({"initialkey", "album"}),
+        _check_key_album_mismatch,
+    ),
     Check(
         "subtitle_drift",
         frozenset({"artist", "title", "album", "bpm", "year", "subtitle"}),
@@ -361,7 +388,17 @@ CHECK_REGISTRY: tuple[Check, ...] = (
         _check_artist_field_mismatch,
     ),
     Check("title_format", frozenset({"title"}), _check_title_format),
-    Check("publisher_grouping", frozenset(), _check_publisher_grouping),
+    Check(
+        "publisher_grouping",
+        frozenset({"publisher", "grouping"}),
+        _check_publisher_grouping,
+    ),
+    Check(
+        "bracketed_numbers",
+        frozenset(),
+        _check_bracketed_numbers,
+        frozenset({"publisher", "grouping"}),
+    ),
     Check("discogs_missing", frozenset({"discogs_id"}), _check_discogs_missing),
 )
 

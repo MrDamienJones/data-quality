@@ -18,7 +18,7 @@ The refactor in commits `7f1bd79` and `91847d9` (2026-10-23) split the checks in
 
 | Module | Contents |
 |---|---|
-| `registry.py` | `Check`, `CheckContext`, the ordered `CHECK_REGISTRY`, the 13 check functions, `validate_row` and `list_checks` |
+| `registry.py` | `Check`, `CheckContext`, the ordered `CHECK_REGISTRY`, the 16 check functions, `validate_row` and `list_checks` |
 | `checks.py` | `validate_metadata` (a wrapper over `validate_row`), `categorize_issue` and `EXPECTED_FIELDS` |
 | `filenames.py` | `generate_filename` |
 | `field_maps.py` | `SourceMap`, the `mp3tag_csv` and `itunes_txt` maps, and `resolve_source_map` |
@@ -38,23 +38,25 @@ Each check is a frozen `Check(id, required, run, any_of)`. `required` is the set
 |---|---|---|---|
 | 1 | `missing_fields` | at least one of the 9 guard fields (see below) | `missing_fields` |
 | 2 | `bpm_range` | `bpm` | `value_out_of_range` |
-| 3 | `year_range` | `year` | `value_out_of_range` |
-| 4 | `bpm_track_mismatch` | `bpm`, `track_number` | `bpm_track_mismatch` |
-| 5 | `invalid_camelot` | `album` | `invalid_camelot` |
-| 6 | `corrupted_field` | `initialkey` | `corrupted_field` |
-| 7 | `key_album_mismatch` | `initialkey` | `invalid_key`, `key_album_mismatch` |
-| 8 | `subtitle_drift` | `artist`, `title`, `album`, `bpm`, `year`, `subtitle` | `subtitle_drift` |
-| 9 | `filename_drift` | `artist`, `title` | `filename_drift`, `filename_case_drift` |
-| 10 | `artist_field_mismatch` | `artist` | `artist_field_mismatch` |
-| 11 | `title_format` | `title` | `title_format` |
-| 12 | `publisher_grouping` | none | `publisher_grouping` |
-| 13 | `discogs_missing` | `discogs_id` | `discogs_missing`, `value_out_of_range` |
+| 3 | `track_number_range` | `track_number` | `value_out_of_range` |
+| 4 | `year_range` | `year` | `value_out_of_range` |
+| 5 | `bpm_track_mismatch` | `bpm`, `track_number` | `bpm_track_mismatch` |
+| 6 | `invalid_camelot` | `album` | `invalid_camelot` |
+| 7 | `corrupted_field` | `initialkey` | `corrupted_field` |
+| 8 | `invalid_key` | `initialkey` | `invalid_key` |
+| 9 | `key_album_mismatch` | `initialkey`, `album` | `key_album_mismatch` |
+| 10 | `subtitle_drift` | `artist`, `title`, `album`, `bpm`, `year`, `subtitle` | `subtitle_drift` |
+| 11 | `filename_drift` | `artist`, `title` | `filename_drift`, `filename_case_drift` |
+| 12 | `artist_field_mismatch` | `artist` | `artist_field_mismatch` |
+| 13 | `title_format` | `title` | `title_format` |
+| 14 | `publisher_grouping` | `publisher`, `grouping` | `publisher_grouping` |
+| 15 | `bracketed_numbers` | at least one of `publisher`, `grouping` | `bracketed_numbers` |
+| 16 | `discogs_missing` | `discogs_id` | `discogs_missing`, `value_out_of_range` |
 
 The 9 guard fields are `title`, `artist`, `album`, `initialkey`, `encodedby`, `album_artist`, `album_artist_sort`, `subtitle` and `year`.
 
-An id is a handle for selecting a check. A code is the label on an issue that `CHECK_TYPES` maps to a dashboard category. The codes are the stable contract for consumers. The message text can change. The id and the code differ where two checks emit one code (`bpm_range` and `year_range`), and where one check emits two codes:
+An id is a handle for selecting a check. A code is the label on an issue that `CHECK_TYPES` maps to a dashboard category. The codes are the stable contract for consumers. The message text can change. The id and the code differ where several checks emit one code (`bpm_range`, `track_number_range` and `year_range` all emit `value_out_of_range`), and where one check emits two codes:
 
-- `key_album_mismatch` emits `invalid_key` for a key that is not valid notation, and `key_album_mismatch` for a valid key that does not match the album.
 - `filename_drift` emits `filename_case_drift` when the file name matches the expected name apart from letter case, and `filename_drift` for any other difference. On the 2026-10-21 exports, 36 of the 70 drifts were letter case only. The separate code lets you fix those as one group.
 - `discogs_missing` emits `discogs_missing` for a missing or zero id, and `value_out_of_range` for a negative id.
 
@@ -62,17 +64,21 @@ An id is a handle for selecting a check. A code is the label on an issue that `C
 
 ### Required-Field Rule
 
-A check's required set holds only the fields without which no branch of the check can fire. It does not hold every field that some branch reads. With the larger set, a source that lacks a field used by one branch would skip the whole check. The branches that could still run would then be lost. Three checks show the rule:
+A check's required set holds only the fields without which no branch of the check can fire. It does not hold every field that some branch reads. With the larger set, a source that lacks a field used by one branch would skip the whole check. The branches that could still run would then be lost. For example, `artist_field_mismatch` requires only `artist`, and each of its two comparisons has its own guard.
 
-- `key_album_mismatch` requires only `initialkey`. The `invalid_key` branch needs only the key. The album comparison has its own guard and does nothing when `album` is absent.
-- `artist_field_mismatch` requires only `artist`. Each comparison has its own guard.
-- `publisher_grouping` requires nothing. Its three branches each need only `publisher`, only `grouping`, or both.
+`any_of` covers a check that can run on any one of several fields:
 
-`missing_fields` uses `any_of` in place of `required`. It runs when at least one guard field is present, and it reports only the guard fields that are present but blank. The `mp3tag_csv` export has no `album_artist_sort` column. With all 9 guard fields required, `missing_fields` never ran on that export, and a blank title, artist, album, key, year or encoder passed with no issue. If no guard field is present, the check is skipped.
+- `missing_fields` runs when at least one guard field is present, and it reports only the guard fields that are present but blank. The `mp3tag_csv` export has no `album_artist_sort` column. With all 9 guard fields required, `missing_fields` never ran on that export, and a blank title, artist, album, key, year or encoder passed with no issue. If no guard field is present, the check is skipped.
+- `bracketed_numbers` runs when `publisher` or `grouping` is present, and it checks each one that is present.
 
-### Merged Checks
+### One Check, One Test
 
-The original function had 16 blocks. Blocks 12 and 13 both emitted `publisher_grouping` and ran one after the other, so the registry merges them into one check. `key_album_mismatch` stays one check with two codes, so that its order and output did not change. The cost is that a caller cannot turn off only the bracket-number test or only `invalid_key`.
+Each check now does one test, so `checks_run` and `skipped_checks` show what was really checked, and `exclude` can turn off any single test. Two checks used to hold two tests each:
+
+- `key_album_mismatch` also tested key notation. A source with a key but no album ran it, but could only do the notation test. It is now `invalid_key` (requires the key) and `key_album_mismatch` (requires the key and the album).
+- `publisher_grouping` also tested for bracketed numbers. On iTunes, which has no publisher column, it ran but could only do the bracket test. It is now `publisher_grouping` (requires both fields) and `bracketed_numbers`, which has its own code.
+
+`track_number_range` fills a gap. The track number holds the BPM in this library. When the BPM is present, `bpm_range` and `bpm_track_mismatch` already cover the track number. When the BPM is blank, as in every iTunes export, nothing checked it. The check runs only when the BPM is blank, so no value is reported twice. On the 2026-10-21 exports every track number is in the range 100 to 180, so it reports nothing.
 
 ## Running Checks With validate_row
 
@@ -118,7 +124,7 @@ The rule behind this design: a data problem is reported as an issue, and only an
 
 `validate_frame(df, field_map=None, source=None, include=None, exclude=None)` runs `validate_row` on each row and returns a `FrameValidationSummary` with `total`, `passed`, `pass_rate`, `issue_counts`, `checks_run`, `skipped_checks`, the per-row `results` and the original index values in `row_index`. `failures()` yields `(index, result)` for each failed row.
 
-A pass rate alone hides how much was checked. On the 2026-10-21 iTunes export, 98.5% of rows passed, but only 7 of the 13 checks ran. `checks_selected` is `checks_run | skipped_checks`, so `len(checks_run)` of `len(checks_selected)` gives the coverage to show next to the pass rate.
+A pass rate alone hides how much was checked. On the 2026-10-21 iTunes export, 98.5% of rows passed, but only 8 of the 16 checks ran. `checks_selected` is `checks_run | skipped_checks`, so `len(checks_run)` of `len(checks_selected)` gives the coverage to show next to the pass rate.
 
 ### Reading Rows
 
@@ -150,7 +156,7 @@ iTunes shows the content-group tag in its `Work` column. mp3tag calls the same t
 | Map | Columns it lacks | Checks skipped on every row |
 |---|---|---|
 | `mp3tag_csv` | `album_artist_sort`, `discogs_id` | `discogs_missing` |
-| `itunes_txt` | `bpm`, `initialkey`, `encodedby`, `album_artist`, `album_artist_sort`, `subtitle`, `publisher`, `discogs_id` | `discogs_missing`, `bpm_range`, `bpm_track_mismatch`, `corrupted_field`, `key_album_mismatch`, `subtitle_drift` |
+| `itunes_txt` | `bpm`, `initialkey`, `encodedby`, `album_artist`, `album_artist_sort`, `subtitle`, `publisher`, `discogs_id` | `discogs_missing`, `bpm_range`, `bpm_track_mismatch`, `corrupted_field`, `invalid_key`, `key_album_mismatch`, `subtitle_drift`, `publisher_grouping` |
 
 In this library the album tag holds the Camelot key code, for example `08A-Am`, not an album title. `itunes_txt` maps `Album` to `album`, so `invalid_camelot` runs on it. An iTunes library that holds real album titles must pass `exclude=["invalid_camelot"]`, or every row fails.
 
@@ -195,12 +201,9 @@ On the 2026-10-21 exports, all 4,632 tracks matched on path. The only mismatches
 4. Replace the last `(` with `-`.
 5. Remove all other brackets and all spaces.
 
+The result never has more than two dashes. Step 2 removes every hyphen inside a field, including the dash lookalikes that step 1 maps to `-`. Only steps 3 and 4 add a dash. An earlier guard that raised an error for more than two dashes could never trigger, and is removed.
+
 `CHARACTER_REPLACEMENTS` turns Unicode dashes into `-` and removes typographic quotes, the same as their ASCII forms. Both kinds of character appear in real tags. Without these entries, a title with `’` (U+2019) or `‐` (U+2010) gives a different file name from the same title typed in ASCII.
-
-## Known Limitations
-
-- `key_album_mismatch` and `publisher_grouping` cannot be turned off in part. See [Merged Checks](#merged-checks).
-- `track_number` is not range-checked when `bpm` is blank. The retired `pydantic_fallback` check reported this, but only on sources that carried all 9 guard fields.
 
 ## Changes From the Original Spec
 
@@ -216,6 +219,9 @@ The spec that guided the refactor required that every issue message stay byte-id
 - `CHARACTER_REPLACEMENTS` maps typographic apostrophes and double quotes, and three more dash lookalikes (U+FE58, U+FE63, U+FF0D).
 - `itunes_txt` maps `Work` to `grouping` in place of `Grouping`.
 - `reconcile_frames` and `SourceMap.path_from` are new.
+- `key_album_mismatch` and `publisher_grouping` are split into one check per test: `invalid_key` and `bracketed_numbers` are new checks, and bracket issues have the new code `bracketed_numbers`. See [One Check, One Test](#one-check-one-test).
+- `track_number_range` is new.
+- `generate_filename` no longer has the dash-count guard, and `filename_drift` no longer has the "Filename generation error" path that only the guard could reach.
 - `categorize_issue` classifies a plain-string message by the fixed phrase that starts it. The earlier version searched the whole message for keywords, so track data inside the message could change the result. For example, a subtitle-drift message for a track titled "Missing" was classified as `missing_fields`. A test now checks that every message the checks emit classifies to its own code and field.
 - The `file_size` check is removed, with `MIN_FILE_SIZE_BYTES`, `SourceMap.size_from` and the `file_size_bytes` arguments. It compared the file size with a fixed 100 KB minimum to find broken files. It never fired on the 2026-10-21 export, where the smallest file is 5.2 MB. A broken file usually fails earlier, when the consumer cannot read its tags.
 - `models.py` is replaced by `filenames.py`, which holds only `generate_filename`. The `AudioMetadata` model and the pipeline config models (`Config`, `MetadataMapping`, `PathConfig`, `ValidationConfig`, `AudioFormatEnum`) are removed. No check used them, and `AudioMetadata` held a second copy of the check rules. This repo is to be the only source of the checks, so the registry is the only copy.
